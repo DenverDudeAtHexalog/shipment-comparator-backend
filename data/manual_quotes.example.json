@@ -1,0 +1,20 @@
+{
+  "_note": "EXAMPLE ONLY - fictional numbers. Copy to manual_quotes.json and enter REAL quotes you received and are allowed to show. Not loaded by the app.",
+  "quotes": [
+    {
+      "provider": "Example Forwarder (emailed quote)",
+      "origin_country": "IN",
+      "destination_country": "US",
+      "mode": "sea_fcl",
+      "container_type": "40HC",
+      "total_price": 0,
+      "currency": "USD",
+      "transit_days_min": 0,
+      "transit_days_max": 0,
+      "valid_until": "2026-12-31",
+      "received_on": "2026-10-16",
+      "notes": "Excludes insurance, duties and surcharges. Non-binding.",
+      "display_permitted": false
+    }
+  ]
+}
