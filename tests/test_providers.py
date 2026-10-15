@@ -90,3 +90,35 @@ def test_real_quotes_beat_simulated_in_ranking():
     out = build_comparison(_ship(), results)
     assert out.cheapest.total_price == 2500 and out.cheapest.is_simulated is False
     assert out.contains_simulated is True and "simulated quotes are excluded" in out.comparison_note
+
+
+def _ok_vendors(body):
+    return [r["provider"] for r in client.post("/api/v1/quotes", json=body).json()["results"]
+            if r["status"] == "ok" and r["quotes"]]
+
+
+def test_every_mode_gets_several_vendors():
+    lcl = {**FCL_IN_US, "mode": "sea_lcl", "dimensions": {"length_cm": 100, "width_cm": 100, "height_cm": 100}}
+    air = {**FCL_IN_US, "mode": "air", "weight_kg": 200,
+           "dimensions": {"length_cm": 50, "width_cm": 40, "height_cm": 30}}
+    for body in (FCL_IN_US, lcl, air):
+        assert len(_ok_vendors(body)) >= 3, body["mode"]
+
+
+def test_fcl_price_scales_with_container_count_and_type():
+    async def alpha(**over):
+        from app.providers.mock import SimFreightAlpha
+        res = await compare_quotes(_ship(**over), [SimFreightAlpha()])
+        return res.results[0].quotes[0].total_price
+    import asyncio
+    one = asyncio.run(alpha())
+    assert abs(asyncio.run(alpha(container_count=2)) - 2 * one) < 0.05
+    assert asyncio.run(alpha(container_type="20RF")) > asyncio.run(alpha(container_type="20GP"))
+
+
+def test_multi_service_vendor_returns_two_quotes():
+    air = {**FCL_IN_US, "mode": "air", "weight_kg": 200,
+           "dimensions": {"length_cm": 50, "width_cm": 40, "height_cm": 30}}
+    res = client.post("/api/v1/quotes", json=air).json()["results"]
+    echo = next(r for r in res if "Echo" in r["provider"])
+    assert len(echo["quotes"]) == 2

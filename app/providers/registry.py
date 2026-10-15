@@ -2,7 +2,14 @@
 from app import config
 from app.providers.base import BaseProvider
 from app.providers.manual import ManualQuoteProvider
-from app.providers.mock import SimCargoBeta, SimFreightAlpha, SimLogixGamma
+from app.providers.mock import (
+    SimAirEcho,
+    SimCargoBeta,
+    SimFreightAlpha,
+    SimGlobalFoxtrot,
+    SimLogixGamma,
+    SimOceanDelta,
+)
 from app.providers.pending import IntogloProvider, XhipmentProvider
 from app.providers.searates import SearatesProvider
 
@@ -15,5 +22,8 @@ def get_providers() -> list[BaseProvider]:
         SearatesProvider(),     # needs SEARATES_API_KEY + mapping
     ]
     if config.ENABLE_MOCK_PROVIDERS:
-        providers += [SimFreightAlpha(), SimCargoBeta(), SimLogixGamma()]  # SIMULATED demo data
+        providers += [  # SIMULATED demo data: several vendors per mode so comparisons have something to compare
+            SimFreightAlpha(), SimCargoBeta(), SimOceanDelta(), SimAirEcho(), SimGlobalFoxtrot(),
+            SimLogixGamma(),  # always fails, on purpose
+        ]
     return providers
