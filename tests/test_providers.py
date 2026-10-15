@@ -49,7 +49,7 @@ def test_intoglo_box_only_for_in_us_fcl():
 def test_request_boxes_and_searates_hidden():
     res = client.post("/api/v1/quotes", json=FCL_IN_US).json()
     boxes = {x["provider"] for x in res["request_quotes"]}
-    assert {"Intoglo", "Xhipment", "Cogoport", "Freightos"} == boxes
+    assert {"Intoglo", "Xhipment", "Cogoport", "Freightos", "FreightMango", "Agraga", "Flexport"} == boxes
     assert res["unavailable"] == []  # hidden by default
     assert not any(x["provider"] in boxes for x in res["results"])
 
@@ -79,7 +79,7 @@ async def test_missing_or_corrupt_manual_file(tmp_path):
 async def test_providers_dont_crash_and_pending_has_no_price():
     res = await compare_quotes(_ship(), [*request_only_providers(), SearatesProvider()])
     assert res.results == [] and res.cheapest is None and res.fastest is None
-    assert len(res.request_quotes) == 4
+    assert len(res.request_quotes) == 7
     assert [u.provider for u in res.unavailable] == ["SeaRates"]
 
 

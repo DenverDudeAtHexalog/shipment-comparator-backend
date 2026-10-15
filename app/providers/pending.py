@@ -6,6 +6,7 @@ Facts below come from each platform's public pages / public write-ups (checked 1
   personalised quote in your inbox". No price on screen, no public API found.
 - Xhipment: quotes are "shared ... on the digital platform" (login). No public API found. Its Quotation
   Terms restrict reproducing/distributing quotes without written consent.
+- FreightMango, Agraga, Flexport: listed because they are widely used; no price API verified.
 - Cogoport, Freightos: described publicly as offering instant online quotes; no public price API verified.
 - Only the most widely used platforms are listed; the rest are dropped rather than shown as clutter.
 Do not POST to any site's internal endpoints from the backend: that only creates sales leads.
@@ -58,5 +59,18 @@ def request_only_providers() -> list[RequestOnlyProvider]:
         RequestOnlyProvider(
             "Freightos", "https://www.freightos.com",
             _generic("Freightos compares air, ocean and trucking quotes from many providers."),
+        ),
+        RequestOnlyProvider(
+            "FreightMango", "https://www.freightmango.com",
+            _generic("FreightMango is a digital freight marketplace."),
+        ),
+        RequestOnlyProvider(
+            "Agraga", "https://www.agraga.com",
+            _generic("Agraga is an India-based platform for cross-border logistics for MSMEs."),
+        ),
+        RequestOnlyProvider(
+            "Flexport", "https://www.flexport.com",
+            "Flexport has no public instant quote; its public site routes enquiries to an expert. "
+            "Request a quote from them directly.",
         ),
     ]
