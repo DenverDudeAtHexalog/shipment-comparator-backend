@@ -110,9 +110,27 @@ class ProviderResult(BaseModel):
     elapsed_ms: int | None = None
 
 
+class RequestBox(BaseModel):
+    """A popular platform we can't fetch a price from. The UI shows a box: 'request this quote there'."""
+    provider: str
+    message: str
+    action_url: str | None = None
+    action_label: str = "Request quote"
+
+
+class UnavailableProvider(BaseModel):
+    """Providers that returned nothing useful (can't serve this lane, not configured, timed out...).
+    The UI should NOT show these; they are kept for debugging and transparency."""
+    provider: str
+    status: ProviderStatus
+    reason: str | None = None
+
+
 class QuoteResponse(BaseModel):
     request: ShipmentRequest
-    results: list[ProviderResult]
+    results: list[ProviderResult]  # ONLY providers that returned at least one priced quote
+    request_quotes: list[RequestBox] = []  # popular platforms without an automatic price
+    unavailable: list[UnavailableProvider] = []
     cheapest: Quote | None = None
     fastest: Quote | None = None
     contains_simulated: bool = False  # True if ANY quote is fake demo data

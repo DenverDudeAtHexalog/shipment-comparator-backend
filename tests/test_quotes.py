@@ -19,23 +19,57 @@ AIR = {
 }
 
 
-def test_quotes_endpoint_resilient_and_labelled():
-    r = client.post("/api/v1/quotes", json=AIR)
-    assert r.status_code == 200
-    body = r.json()
-    statuses = {x["provider"]: x["status"] for x in body["results"]}
-    assert "error" in statuses.values() and "ok" in statuses.values()  # one failed, others fine
+def test_quotes_endpoint_only_priced_vendors_in_results():
+    body = client.post("/api/v1/quotes", json=AIR).json()
+    assert body["results"], "expected several priced vendors"
+    assert all(x["status"] == "ok" and x["quotes"] for x in body["results"])
+    assert len(body["results"]) >= 9
     assert body["contains_simulated"] is True
     assert all(q["is_simulated"] for x in body["results"] for q in x["quotes"])
-    assert body["cheapest"] is not None and body["fastest"] is not None
     prices = [q["total_price"] for x in body["results"] for q in x["quotes"]]
     assert body["cheapest"]["total_price"] == min(prices)
+    assert body["fastest"] is not None
+    # unobtainable-price popular platforms appear as request boxes, not as prices
+    boxes = {b["provider"] for b in body["request_quotes"]}
+    assert {"Xhipment", "Cogoport", "Freightos"} <= boxes
+    assert all(b["action_url"] for b in body["request_quotes"])
+    # outage demo vendor is off by default
+    assert body["unavailable"] == [] and not any("Gamma" in x["provider"] for x in body["results"])
 
 
-def test_fcl_gives_no_quote_for_beta():
+def test_vendor_that_cannot_serve_is_hidden_everywhere():
     body = client.post("/api/v1/quotes", json={**AIR, "mode": "sea_fcl", "dimensions": None}).json()
-    beta = next(x for x in body["results"] if "Beta" in x["provider"])
-    assert beta["status"] == "no_quote"
+    assert not any("Beta" in x["provider"] for x in body["results"])  # Beta has no FCL
+    assert not any("Echo" in x["provider"] for x in body["results"])  # Echo is air only
+    assert body["unavailable"] == [] and len(body["results"]) >= 8
+
+
+def test_in_us_fcl_uses_labelled_reference_and_gulf_costs_more():
+    base = {"origin": {"country": "IN", "port_code": "INNSA"}, "mode": "sea_fcl", "weight_kg": 18000,
+            "container_type": "40HC"}
+
+    def alpha(dest):
+        body = client.post("/api/v1/quotes", json={**base, "destination": dest}).json()
+        return next(q for x in body["results"] if "Alpha" in x["provider"] for q in x["quotes"])
+
+    ny = alpha({"country": "US", "port_code": "USNYC"})
+    hou = alpha({"country": "US", "port_code": "USHOU"})
+    assert hou["total_price"] > ny["total_price"]
+    assert "2023" in ny["notes"] and ny["is_simulated"]
+    other = alpha({"country": "AE", "port_code": "AEJEA"})
+    assert "not market data" in other["notes"]
+
+
+def test_container_count_scales_fcl_price():
+    one = {"origin": {"country": "IN", "port_code": "INNSA"}, "destination": {"country": "US", "port_code": "USLAX"},
+           "mode": "sea_fcl", "weight_kg": 18000, "container_type": "40HC", "container_count": 1}
+    two = {**one, "container_count": 2}
+
+    def alpha(j):
+        b = client.post("/api/v1/quotes", json=j).json()
+        return next(q for x in b["results"] if "Alpha" in x["provider"] for q in x["quotes"])["total_price"]
+
+    assert alpha(two) == pytest.approx(2 * alpha(one), rel=0.01)
 
 
 def test_invalid_input_422():
@@ -68,7 +102,8 @@ class _Mixed(BaseProvider):
 async def test_timeout_and_unexpected_exception():
     ship = ShipmentRequest(**AIR)
     res = await compare_quotes(ship, [_Slow(), _Buggy()], timeout=0.2)
-    assert [r.status.value for r in res.results] == ["timeout", "error"]
+    assert res.results == []
+    assert [u.status.value for u in res.unavailable] == ["timeout", "error"]
     assert res.cheapest is None
 
 

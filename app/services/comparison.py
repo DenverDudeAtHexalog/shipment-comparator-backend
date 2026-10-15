@@ -10,7 +10,15 @@ from app.providers.base import (
     ProviderNotConfigured,
     QuotePending,
 )
-from app.schemas import ProviderResult, ProviderStatus, Quote, QuoteResponse, ShipmentRequest
+from app.schemas import (
+    ProviderResult,
+    ProviderStatus,
+    Quote,
+    QuoteResponse,
+    RequestBox,
+    ShipmentRequest,
+    UnavailableProvider,
+)
 
 
 async def _run_provider(provider: BaseProvider, shipment: ShipmentRequest, timeout: float) -> ProviderResult:
@@ -46,7 +54,17 @@ def _transit_key(q: Quote) -> int | None:
     return q.transit_days_max if q.transit_days_max is not None else q.transit_days_min
 
 
-def build_comparison(shipment: ShipmentRequest, results: list[ProviderResult]) -> QuoteResponse:
+def build_comparison(shipment: ShipmentRequest, all_results: list[ProviderResult]) -> QuoteResponse:
+    results = [r for r in all_results if r.status == ProviderStatus.OK and r.quotes]
+    request_quotes = [
+        RequestBox(provider=r.provider, message=r.message or "No automatic price available.", action_url=r.action_url)
+        for r in all_results if r.status == ProviderStatus.PENDING
+    ]
+    unavailable = [
+        UnavailableProvider(provider=r.provider, status=r.status, reason=r.message or r.error)
+        for r in all_results
+        if r.status not in (ProviderStatus.OK, ProviderStatus.PENDING) or (r.status == ProviderStatus.OK and not r.quotes)
+    ]
     quotes = [q for r in results for q in r.quotes]
     notes: list[str] = []
     cheapest = fastest = None
@@ -68,7 +86,8 @@ def build_comparison(shipment: ShipmentRequest, results: list[ProviderResult]) -
             fastest = min(with_transit, key=lambda q: (_transit_key(q), q.total_price))
 
     return QuoteResponse(
-        request=shipment, results=results, cheapest=cheapest, fastest=fastest,
+        request=shipment, results=results, request_quotes=request_quotes, unavailable=unavailable,
+        cheapest=cheapest, fastest=fastest,
         contains_simulated=any(q.is_simulated for q in quotes),
         comparison_note=" ".join(notes) or None,
     )

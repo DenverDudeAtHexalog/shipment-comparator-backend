@@ -9,21 +9,23 @@ from app.providers.mock import (
     SimGlobalFoxtrot,
     SimLogixGamma,
     SimOceanDelta,
+    extra_sim_vendors,
 )
-from app.providers.pending import IntogloProvider, XhipmentProvider
+from app.providers.pending import request_only_providers
 from app.providers.searates import SearatesProvider
 
 
 def get_providers() -> list[BaseProvider]:
     providers: list[BaseProvider] = [
-        ManualQuoteProvider(),  # real quotes your team entered and may display
-        IntogloProvider(),      # pending: quote arrives by email
-        XhipmentProvider(),     # pending: quote lives in their app
-        SearatesProvider(),     # needs SEARATES_API_KEY + mapping
+        ManualQuoteProvider(),     # real quotes your team entered and may display
+        SearatesProvider(),        # hidden until SEARATES_API_KEY is set and the mapping is built
+        *request_only_providers(),  # popular platforms: shown as "request a quote there" boxes
     ]
     if config.ENABLE_MOCK_PROVIDERS:
-        providers += [  # SIMULATED demo data: several vendors per mode so comparisons have something to compare
+        providers += [  # SIMULATED demo data: several vendors per mode
             SimFreightAlpha(), SimCargoBeta(), SimOceanDelta(), SimAirEcho(), SimGlobalFoxtrot(),
-            SimLogixGamma(),  # always fails, on purpose
+            *extra_sim_vendors(),
         ]
+    if config.ENABLE_OUTAGE_DEMO:
+        providers.append(SimLogixGamma())  # always fails, on purpose
     return providers

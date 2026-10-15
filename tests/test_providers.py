@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.providers.manual import ManualQuoteProvider
-from app.providers.pending import IntogloProvider, XhipmentProvider
+from app.providers.pending import request_only_providers
 from app.providers.searates import SearatesProvider
 from app.schemas import ProviderStatus, Quote, ShipmentRequest, ShippingMode
 from app.services.comparison import build_comparison, compare_quotes
@@ -36,20 +36,22 @@ def _manual_file(tmp_path, **over):
     return p
 
 
-def test_intoglo_pending_only_for_in_us_fcl():
+def test_intoglo_box_only_for_in_us_fcl():
     res = client.post("/api/v1/quotes", json=FCL_IN_US).json()
-    r = next(x for x in res["results"] if x["provider"] == "Intoglo")
-    assert r["status"] == "pending" and r["action_url"] and r["quotes"] == []
+    box = next(x for x in res["request_quotes"] if x["provider"] == "Intoglo")
+    assert box["action_url"]
     air = {**FCL_IN_US, "mode": "air", "dimensions": {"length_cm": 50, "width_cm": 40, "height_cm": 30}}
-    r2 = next(x for x in client.post("/api/v1/quotes", json=air).json()["results"] if x["provider"] == "Intoglo")
-    assert r2["status"] == "no_quote"
+    body = client.post("/api/v1/quotes", json=air).json()
+    assert not any(x["provider"] == "Intoglo" for x in body["request_quotes"])
+    assert body["unavailable"] == []
 
 
-def test_xhipment_pending_and_searates_not_configured():
+def test_request_boxes_and_searates_hidden():
     res = client.post("/api/v1/quotes", json=FCL_IN_US).json()
-    st = {x["provider"]: x["status"] for x in res["results"]}
-    assert st["Xhipment"] == "pending"
-    assert st["SeaRates"] == "not_configured"
+    boxes = {x["provider"] for x in res["request_quotes"]}
+    assert {"Intoglo", "Xhipment", "Cogoport", "Freightos"} == boxes
+    assert res["unavailable"] == []  # hidden by default
+    assert not any(x["provider"] in boxes for x in res["results"])
 
 
 async def test_manual_quote_used_only_when_permitted(tmp_path):
@@ -57,27 +59,28 @@ async def test_manual_quote_used_only_when_permitted(tmp_path):
     q = ok.results[0].quotes[0]
     assert q.source == "manual" and q.is_simulated is False and q.currency == "USD"
     blocked = await compare_quotes(_ship(), [ManualQuoteProvider(_manual_file(tmp_path, display_permitted=False))])
-    assert blocked.results[0].status == ProviderStatus.NO_QUOTE
+    assert blocked.results == [] and blocked.unavailable[0].status == ProviderStatus.NO_QUOTE
 
 
 async def test_manual_quote_expired_or_wrong_lane_skipped(tmp_path):
     expired = _manual_file(tmp_path, valid_until=(date.today() - timedelta(days=1)).isoformat())
-    assert (await compare_quotes(_ship(), [ManualQuoteProvider(expired)])).results[0].status == ProviderStatus.NO_QUOTE
+    assert (await compare_quotes(_ship(), [ManualQuoteProvider(expired)])).unavailable[0].status == ProviderStatus.NO_QUOTE
     wrong = _manual_file(tmp_path, destination_country="AE")
-    assert (await compare_quotes(_ship(), [ManualQuoteProvider(wrong)])).results[0].status == ProviderStatus.NO_QUOTE
+    assert (await compare_quotes(_ship(), [ManualQuoteProvider(wrong)])).unavailable[0].status == ProviderStatus.NO_QUOTE
 
 
 async def test_missing_or_corrupt_manual_file(tmp_path):
-    assert (await compare_quotes(_ship(), [ManualQuoteProvider(tmp_path / "nope.json")])).results[0].status == ProviderStatus.NO_QUOTE
+    assert (await compare_quotes(_ship(), [ManualQuoteProvider(tmp_path / "nope.json")])).unavailable[0].status == ProviderStatus.NO_QUOTE
     bad = tmp_path / "bad.json"
     bad.write_text("{not json")
-    assert (await compare_quotes(_ship(), [ManualQuoteProvider(bad)])).results[0].status == ProviderStatus.ERROR
+    assert (await compare_quotes(_ship(), [ManualQuoteProvider(bad)])).unavailable[0].status == ProviderStatus.ERROR
 
 
 async def test_providers_dont_crash_and_pending_has_no_price():
-    res = await compare_quotes(_ship(), [IntogloProvider(), XhipmentProvider(), SearatesProvider()])
-    assert [r.status.value for r in res.results] == ["pending", "pending", "not_configured"]
-    assert res.cheapest is None and res.fastest is None
+    res = await compare_quotes(_ship(), [*request_only_providers(), SearatesProvider()])
+    assert res.results == [] and res.cheapest is None and res.fastest is None
+    assert len(res.request_quotes) == 4
+    assert [u.provider for u in res.unavailable] == ["SeaRates"]
 
 
 def test_real_quotes_beat_simulated_in_ranking():
